@@ -1,0 +1,187 @@
+<html>
+  <head> </head>
+  <body>
+    <div id="templateDot" class="dot" style="opacity: 0"></div>
+
+    <script>
+      const templateDot = document.getElementById("templateDot");
+
+      const run = useRunner([
+        { name: "START", run: (state) => state },
+        useDrawSpot("red"),
+        useThrottle(1000 / 60),
+        useLast(),
+        useKickstart(2),
+        useDrawSpot("yellow"),
+        useSmoothing(0.1),
+        useDrawSpot("green"),
+        useRelative(),
+        useDrawSpot("marine"),
+      ]);
+
+      let clientX = 0;
+      let clientY = 0;
+
+      document.addEventListener("mousemove", (event) => {
+        clientX = event.clientX;
+        clientY = event.clientY;
+      });
+
+      function tick() {
+        run({ x: clientX, y: clientY });
+      }
+      setInterval(tick, 1000 / 100);
+
+      // function useMinMaxBounds() {
+      //   let boundsX = [0, 0];
+      //   let boundsY = [0, 0];
+
+      //   return ([x, y]) => {
+      //     boundsX = [Math.min(boundsX[0], x), Math.max(boundsX[1], x)];
+      //     boundsY = [Math.min(boundsY[0], y), Math.max(boundsY[1], y)];
+      //     return [
+      //       (x - boundsX[0]) / (boundsX[1] - boundsX[0]),
+      //       (y - boundsY[0]) / (boundsY[1] - boundsY[0]),
+      //     ];
+      //   };
+      // }
+
+      function useRunner(arr) {
+        let id = 0;
+        return (state) => {
+          state.id = id++;
+          return arr.reduce((state, fn) => {
+            if (!state) return null;
+            const name = fn.name || null;
+            const run = fn.run || fn;
+            try {
+              const result = run(state);
+              if (result === "stop") return null;
+              Object.assign(state, result || {});
+              if (name) {
+                console.log(`[ ${name || "unknown"} ]`, result);
+              }
+            } catch (error) {
+              console.error(error);
+              console.log(`ERROR in "${name || "UNKNOWN"}"`, { error, state });
+            }
+            return state;
+          }, state);
+        };
+      }
+
+      function useLast() {
+        let lastState = null;
+        return (state) => {
+          const result = { ...state, last: lastState };
+          lastState = result;
+          return result;
+        };
+      }
+
+      function useThrottle(ms = 1000 / 60) {
+        let last = 0;
+        return (state) => {
+          const now = Date.now();
+          if (now - last < ms) return "stop";
+          last = now;
+        };
+      }
+
+      function useDrawSpot(color) {
+        const clone = templateDot.cloneNode(true);
+        clone.style.backgroundColor = color;
+        clone.style.opacity = 1;
+        document.body.appendChild(clone);
+
+        return (state) => {
+          const { x, y } = state;
+          clone.style.top = y + "px";
+          clone.style.left = x + "px";
+        };
+      }
+
+      function useSmoothing(factor = 0.05) {
+        let lastX = 0;
+        let lastY = 0;
+
+        const round = (n) => Math.round(n * 100) / 100;
+
+        return {
+          name: "smoothing",
+          run: (state) => {
+            const { x, y, last } = state;
+
+            const diffX = round(x) - lastX;
+            const diffY = round(y) - lastY;
+            if (diffX === 0 && diffY === 0) return;
+
+            const newX = round(lastX + diffX * factor);
+            const newY = round(lastY + diffY * factor);
+
+            lastX = newX;
+            lastY = newY;
+
+            return { x: newX, y: newY, diffX, diffY };
+          },
+        };
+      }
+
+      function useKickstart(factor = 1) {
+        let oldX = null;
+        let oldY = null;
+        let oldX2 = null;
+        let oldY2 = null;
+
+        return {
+          name: "kickstart",
+          run: ({ x, y, last }) => {
+            if (!oldX) {
+              oldX = x;
+              oldY = y;
+              return;
+            }
+            if (!oldX2) {
+              oldX2 = x;
+              oldY2 = y;
+              return;
+            }
+
+            const diffX1 = x - oldX;
+            const diffY1 = y - oldY;
+            const diffX2 = oldX - oldX2;
+            const diffY2 = oldY - oldY2;
+
+            const diffX = diffX1 * 0.7 + diffX2 * 0.3;
+            const diffY = diffY1 * 0.7 + diffY2 * 0.3;
+
+            const prognoseX = x + diffX * factor;
+            const prognoseY = y + diffY * factor;
+
+            oldX2 = oldX;
+            oldY2 = oldY;
+            oldX = x;
+            oldY = y;
+
+            return { x: prognoseX, y: prognoseY };
+          },
+        };
+      }
+    </script>
+
+    <style>
+      body {
+        background-color: black;
+        cursor: cell;
+      }
+      .dot {
+        position: fixed;
+        background-color: red;
+        border-radius: 100%;
+        width: 30px;
+        height: 30px;
+        transform: translate(-50%, -50%);
+      }
+    </style>
+  </body>
+</html>
